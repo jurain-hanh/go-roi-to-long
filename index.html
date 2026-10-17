@@ -309,7 +309,7 @@ function welcome() {
     <p class="welcome-text" style="margin-top:80px">Đi làm, đi học, và cả những lo lắng. Kể mình nghe, mình cùng gỡ rối.</p>
     <svg class="arrow" width="60" height="70" viewBox="0 0 60 70" aria-hidden="true"><path d="M30 4 C20 20 44 26 30 40 C24 46 28 56 30 64 M22 56 L30 65 L38 56" fill="none" stroke="#17171B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </div></div>
-  <div class="foot"><button class="btn" id="next">Bắt đầu</button><p class="hint">Đã cài đặt rồi? <button class="link" id="skip">Vào thẳng trò chuyện</button></p><button class="btn light" id="lab" style="margin-top:2px">Sinh viên Tâm lý? Vào phòng thực hành tham vấn</button></div>`;
+  <div class="foot"><button class="btn" id="next">Bắt đầu</button><button class="btn light" id="lab">Luyện tham vấn</button><p class="hint">Đã cài đặt rồi? <button class="link" id="skip">Vào thẳng trò chuyện</button></p></div>`;
   document.getElementById("next").onclick = () => go(1);
   document.getElementById("skip").onclick = () => go(4);
   document.getElementById("lab").onclick = () => go(STEPS.indexOf("practice"));
