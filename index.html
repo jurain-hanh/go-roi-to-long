@@ -209,7 +209,7 @@ const S = { step: 0, needs: ["Gỡ rối deadline", "Sắp xếp lịch tuần"]
   turns: [], phase: 0, plan: null, planState: "idle", planMsg: "", planTab: "ai", extra: [], aiOff: false };
 const comp = () => COMPANIONS[S.comp];
 const phone = document.getElementById("phone");
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const esc = s => fixVi(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const backIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>';
 const sendIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>';
 const toMin = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
@@ -228,7 +228,7 @@ async function ai(kind, input, opts = {}) {
 }
 function rules() {
   return `Bạn là "${comp().name}", bạn đồng hành trong ứng dụng "Gỡ rối tơ lòng" dành cho sinh viên vừa học vừa làm. ${comp().tone}
-Trò chuyện bằng tiếng Việt, xưng "mình", gọi người dùng là "bạn". Câu ngắn, tối đa khoảng 110 từ mỗi lượt vì hiển thị trên điện thoại. Không dùng markdown in đậm hay tiêu đề; được dùng gạch đầu dòng "-".
+Trò chuyện bằng tiếng Việt, xưng "mình", gọi người dùng là "bạn". Câu ngắn, tối đa khoảng 110 từ mỗi lượt vì hiển thị trên điện thoại. Viết tiếng Việt có dấu đúng chính tả, rà lại dấu thanh trước khi trả lời (ví dụ: "buổi", không viết "buối"). Không dùng markdown in đậm hay tiêu đề; được dùng gạch đầu dòng "-".
 Giúp người dùng theo 3 bước:
 1. Làm rõ khó khăn: hỏi TỪNG CÂU MỘT, mỗi lượt chỉ 1 câu hỏi, để biết các việc học và việc làm đang chồng chéo, hạn chót, thời gian cần và thời gian người dùng có.
 2. Diễn đạt cảm xúc: tóm tắt lại điều người dùng chia sẻ, gọi tên cảm xúc, rồi hỏi lại xem mình hiểu đúng chưa.
@@ -375,7 +375,9 @@ function time() {
 /* ---------- chat ---------- */
 const PHASES = ["Làm rõ", "Cảm xúc", "Kế hoạch"];
 let busy = false, ctl = null;
-function fmt(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "$1"); }
+const TYPO = [[/buối/g, "buổi"], [/Buối/g, "Buổi"], [/buổi phỏng vấn/g, "buổi tham vấn"], [/Buổi phỏng vấn/g, "Buổi tham vấn"]];
+const fixVi = t => TYPO.reduce((a, [re, to]) => a.replace(re, to), String(t ?? ""));
+function fmt(t) { return esc(fixVi(t)).replace(/\*\*(.+?)\*\*/g, "$1"); }
 function chat() {
   const c = comp();
   if (!S.turns.length) S.turns.push({ role: "assistant", content: `Chào bạn, mình là ${c.name}. ${c.line} Trước hết, tuần này điều gì làm bạn thấy rối nhất?`, local: true });
@@ -578,6 +580,7 @@ Hồ sơ thân chủ (nhân vật giả định):
 ${c.profile}
 Quy tắc nhập vai:
 - Luôn nói ở ngôi của thân chủ (xưng "em"), tiếng Việt tự nhiên, 1 đến 3 câu mỗi lượt, như đang nói chuyện thật.
+- Viết tiếng Việt có dấu đúng chính tả, rà lại dấu thanh trước khi trả lời (ví dụ: "buổi", không viết "buối").
 - Không đưa lời khuyên tham vấn, không nhận xét kỹ năng của người dùng trong lúc nhập vai.
 - Chỉ tiết lộ thông tin ẩn khi người dùng dùng kỹ năng tốt (câu hỏi mở, phản ánh cảm xúc, không phán xét). Nếu bị khuyên vội, phán xét hoặc hỏi dồn, hãy thu mình lại một cách tự nhiên.
 - Không mô tả cách thức tự làm hại bản thân dưới bất kỳ hình thức nào.
@@ -645,7 +648,7 @@ async function makeReview() {
   const c = pcase();
   const transcript = P.turns.map(t => `${t.role === "user" ? "Tham vấn viên" : "Thân chủ"}: ${t.content}`).join("\n");
   const prompt = `Bạn là người hướng dẫn thực hành cho sinh viên ngành Tâm lý học. Dưới đây là một buổi LUYỆN TẬP, trong đó AI đóng vai thân chủ "${c.name}" (${c.brief}) và sinh viên đóng vai tham vấn viên.
-Hãy đưa phản hồi mang tính khích lệ và gợi ý để luyện tập, KHÔNG chấm điểm, KHÔNG đánh giá năng lực chuyên môn. Bám sát câu chữ thật trong buổi, trích ngắn khi cần. Tiếng Việt, ngắn gọn.
+Hãy đưa phản hồi mang tính khích lệ và gợi ý để luyện tập, KHÔNG chấm điểm, KHÔNG đánh giá năng lực chuyên môn. Bám sát câu chữ thật trong buổi, trích ngắn khi cần. Tiếng Việt, ngắn gọn. Gọi đây là "buổi tham vấn" hoặc "buổi luyện tập", không gọi là "buổi phỏng vấn". Viết tiếng Việt có dấu đúng chính tả, rà lại dấu thanh trước khi trả lời (ví dụ: "buổi", không viết "buối").
 ${c.risk ? "Thân chủ này có yếu tố cần sàng lọc nguy cơ: nhận xét xem sinh viên đã hỏi thẳng, nhẹ nhàng về ý nghĩ tự làm hại bản thân và nhắc đến nguồn hỗ trợ chưa." : ""}
 Buổi luyện tập:
 ${transcript}
