@@ -559,20 +559,85 @@ const SKILLS = [
 const P = { ci: 0, turns: [], review: null, reviewState: "idle", busy: false };
 const pcase = () => CASES[P.ci];
 
+const TOPICS = ["Áp lực học tập", "Gia đình", "Tình cảm", "Bạn bè", "Công việc làm thêm", "Định hướng nghề", "Thích nghi môi trường mới", "Tự tin, hình ảnh bản thân"];
+const LEVELS = [["Dễ", "Cởi mở, hợp tác, dễ chia sẻ"], ["Vừa", "Hay né tránh cảm xúc, tự hạ thấp mình"], ["Khó", "Phòng thủ, trả lời cộc, thử thách tham vấn viên"]];
+const LOOKS = [["var(--butter)", 6, .09, "smile"], ["var(--coral)", 4, .2, "wink"], ["var(--sky)", 5, .08, "calm"], ["var(--violet)", 3, .12, "calm"], ["var(--teal)", 4, .07, "smile"], ["var(--pink)", 5, .14, "calm"]];
+const DEMO_CASES = [
+  { name: "Tuấn", age: 18, brief: "Tân sinh viên ở trọ xa nhà, chưa quen bạn mới.", opening: "Dạ em chào anh/chị. Em mới lên thành phố học được một tháng…",
+    profile: "Tuấn, 18 tuổi, tân sinh viên, ở trọ một mình. Nhớ nhà, chưa có bạn thân, hay ăn cơm một mình.\nThông tin chỉ kể khi được hỏi khéo: từng bị bạn cùng phòng cũ trêu giọng nói địa phương nên ngại mở lời.",
+    demo: ["Dạ, em cũng không có chuyện gì to tát đâu. Chỉ là hơi buồn thôi ạ.", "Tối nào em cũng gọi về nhà. Ở đây em chưa quen ai.", "Hồi đầu có bạn trêu giọng em… nên em ngại nói chuyện.", "Kể ra thế này em thấy nhẹ hơn ạ."] },
+  { name: "Mai", age: 21, brief: "Năm 3, áp lực vì làm thêm ảnh hưởng điểm số.", opening: "Chào chị. Em đang không biết có nên nghỉ làm thêm không.",
+    profile: "Mai, 21 tuổi, năm 3, làm thêm bán hàng 25 giờ/tuần để gửi tiền về nhà. Điểm học kỳ vừa rồi tụt.\nThông tin chỉ kể khi được hỏi khéo: em trai sắp vào đại học, Mai thấy mình phải gánh vác.",
+    demo: ["Làm thì mệt, mà nghỉ thì nhà em khó khăn.", "Học kỳ rồi em tụt điểm nhiều lắm.", "Em trai em sắp vào đại học… em thấy mình phải lo.", "Chị hỏi vậy em mới nhận ra em chưa từng nghĩ cho mình."] },
+  { name: "Khoa", age: 23, brief: "Mới ra trường, thấy lạc lõng khi bạn bè đều có việc.", opening: "Em cũng không biết nói gì. Chắc tại em lười thôi.",
+    profile: "Khoa, 23 tuổi, tốt nghiệp được 6 tháng, chưa có việc. Hay so sánh với bạn bè trên mạng xã hội.\nTính cách: phòng thủ, đổ lỗi cho bản thân.\nThông tin chỉ kể khi được hỏi khéo: đã rớt 8 vòng phỏng vấn xin việc và giấu bố mẹ.",
+    demo: ["Thì ai cũng có việc rồi, còn em thì chưa.", "Chị định bảo em cố gắng thêm à?", "Em rớt 8 lần rồi. Em không dám nói với bố mẹ.", "Em sợ mình không đủ giỏi."] }
+];
+const G = { open: false, topic: TOPICS[0], level: 1, state: "idle", msg: "", demoIdx: 0 };
+
 function practice() {
+  const gen = G.open ? `<section class="gen" style="background:var(--soft);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:10px">
+      <h2 style="font-size:18px">Tạo thân chủ mới</h2>
+      <p class="hint" style="text-align:left;margin:0">Chủ đề</p>
+      <div class="seg" style="justify-content:flex-start">${TOPICS.map(t => `<button data-topic="${esc(t)}" aria-pressed="${G.topic === t}">${esc(t)}</button>`).join("")}</div>
+      <p class="hint" style="text-align:left;margin:0">Mức độ</p>
+      <div class="seg" style="justify-content:flex-start">${LEVELS.map(([l, d], i) => `<button data-level="${i}" aria-pressed="${G.level === i}">${l}<small>${d}</small></button>`).join("")}</div>
+      ${G.msg ? `<p class="hint" style="text-align:left">${esc(G.msg)}</p>` : ""}
+      <button class="btn" id="mkcase" ${G.state === "loading" ? "disabled" : ""}>${G.state === "loading" ? "Đang tạo thân chủ..." : "Tạo thân chủ"}</button>
+    </section>` : "";
   phone.innerHTML = `${head(true)}
   <div class="body"><h1>Phòng thực hành tham vấn</h1>
     <p class="sub">Dành cho sinh viên Tâm lý. AI đóng vai thân chủ để bạn luyện kỹ năng khai vấn và tham vấn.</p>
     <p class="warnbox" style="font-size:12.5px">Chỉ để luyện tập. Phản hồi cuối buổi là gợi ý, không đánh giá năng lực chuyên môn. Thân chủ là nhân vật giả định.</p>
+    <button class="btn light" id="gentoggle" aria-expanded="${G.open}" style="border:1.5px dashed #C9C9D6;background:#fff">${G.open ? "Đóng" : "+ Tạo thân chủ mới"}</button>
+    ${gen}
     <div class="choices">${CASES.map((c, i) => `<button class="choice" data-case="${i}" aria-pressed="${P.ci === i}" style="align-items:flex-start;padding:12px 14px">
-      <span style="display:flex;gap:12px;align-items:flex-start;min-width:0">${blob(c.color, c.lobes, c.amp, 46, c.mood)}<span style="min-width:0"><b style="font-family:var(--font-display);font-size:17px">${c.name}, ${c.age} tuổi</b><br><span style="font-size:13px;color:var(--muted)">${esc(c.brief)}</span></span></span>
+      <span style="display:flex;gap:12px;align-items:flex-start;min-width:0">${blob(c.color, c.lobes, c.amp, 46, c.mood)}<span style="min-width:0"><b style="font-family:var(--font-display);font-size:17px">${esc(c.name)}, ${c.age} tuổi</b>${c.custom ? ` <span class="tagpill" style="background:#EEEEFF;white-space:nowrap;vertical-align:2px">${c.custom === "demo" ? "Mẫu" : "Mới"}</span>` : ""}<br><span style="font-size:13px;color:var(--muted)">${esc(c.brief)}</span></span></span>
       <span class="tagpill" style="background:${["", "#E7F6F0", "#FFF6DA", "#FDEAE3"][c.lv]};flex:none">${c.level}</span></button>`).join("")}</div>
   </div>
-  <div class="foot"><button class="btn" id="go">Vào phòng với ${pcase().name}</button><p class="hint">Bạn đóng vai tham vấn viên.</p></div>`;
+  <div class="foot"><button class="btn" id="go">Vào phòng với ${esc(pcase().name)}</button><p class="hint">Bạn đóng vai tham vấn viên.</p></div>`;
   bindBack(0);
   phone.querySelectorAll("[data-case]").forEach(b => b.onclick = () => { P.ci = +b.dataset.case; practice(); });
+  document.getElementById("gentoggle").onclick = () => { G.open = !G.open; G.msg = ""; practice(); };
+  phone.querySelectorAll("[data-topic]").forEach(b => b.onclick = () => { G.topic = b.dataset.topic; practice(); });
+  phone.querySelectorAll("[data-level]").forEach(b => b.onclick = () => { G.level = +b.dataset.level; practice(); });
+  const mk = document.getElementById("mkcase"); if (mk) mk.onclick = makeCase;
   document.getElementById("go").onclick = () => { P.turns = [{ role: "assistant", content: pcase().opening }]; P.review = null; P.reviewState = "idle"; go(STEPS.indexOf("room")); };
 }
+function addCase(d, lv, demo = false) {
+  const look = LOOKS[CASES.length % LOOKS.length];
+  CASES.push({ id: "c" + Date.now(), custom: demo ? "demo" : true, name: d.name, age: d.age, level: LEVELS[lv][0], lv: lv + 1,
+    color: look[0], lobes: look[1], amp: look[2], mood: look[3], brief: d.brief, opening: d.opening, profile: d.profile, demo: d.demo });
+  P.ci = CASES.length - 1;
+}
+async function makeCase() {
+  G.state = "loading"; G.msg = ""; practice();
+  const taken = CASES.map(c => c.name).join(", ");
+  const prompt = `Bạn thiết kế thân chủ GIẢ ĐỊNH cho bài luyện tập tham vấn của sinh viên ngành Tâm lý học tại Việt Nam.
+Chủ đề: ${G.topic}. Mức độ: ${LEVELS[G.level][0]} (${LEVELS[G.level][1]}).
+Yêu cầu: thân chủ 18 đến 25 tuổi, tên Việt Nam ngắn khác với các tên: ${taken}. Vấn đề ở mức thường gặp, KHÔNG có yếu tố tự hại hay nguy cơ khủng hoảng. Có 1 thông tin ẩn chỉ kể khi tham vấn viên hỏi khéo. Viết tiếng Việt có dấu đúng chính tả.
+Trả lời CHỈ bằng JSON:
+{"name": "tên", "age": số, "brief": "1 câu tóm tắt cho hồ sơ ban đầu", "opening": "câu đầu tiên thân chủ nói khi vào phòng, xưng em", "profile": "hồ sơ 3-4 câu: hoàn cảnh, tính cách theo mức độ, và dòng 'Thông tin chỉ kể khi được hỏi khéo: ...'", "demo": ["4 câu thân chủ có thể nói lần lượt trong buổi, câu thứ 3 hé lộ thông tin ẩn"]}`;
+  try {
+    const d = await ai("json", prompt, { modelTier: "default" });
+    if (!d || !d.name || !d.opening || !d.profile) throw { code: "invalid_json" };
+    addCase({ name: String(d.name).slice(0, 20), age: Number(d.age) || 20, brief: String(d.brief || ""), opening: String(d.opening), profile: String(d.profile), demo: Array.isArray(d.demo) && d.demo.length ? d.demo.map(String).slice(0, 4) : DEMO_CASES[0].demo }, G.level);
+    G.state = "idle"; G.open = false;
+  } catch (e) {
+    if (e?.code === "off") {
+      const d = DEMO_CASES[G.level];
+      if (!CASES.some(c => c.name === d.name)) { addCase(d, G.level, true); G.open = false; G.msg = ""; }
+      else G.msg = "Bản demo có sẵn 1 thân chủ mẫu cho mỗi mức độ, bạn đã tạo thân chủ mức này rồi. Thử mức khác nhé.";
+      if (!G.open) G.msg = "";
+      G.state = "idle";
+      setTimeout(() => { if (STEPS[S.step] === "practice") { practice(); if (!G.open) { const n = document.querySelector(".choice[aria-pressed=\"true\"]"); n && n.scrollIntoView({ block: "center" }); } } }, 0);
+      return;
+    }
+    G.state = "idle"; G.msg = errText(e);
+  }
+  if (STEPS[S.step] === "practice") { practice(); const n = document.querySelector('.choice[aria-pressed="true"]'); n && n.scrollIntoView({ block: "center" }); }
+}
+
 function roomPrompt() {
   const c = pcase();
   return `Bạn đang tham gia một bài luyện tập cho sinh viên ngành Tâm lý học. Bạn ĐÓNG VAI THÂN CHỦ, người dùng là sinh viên đóng vai tham vấn viên.
@@ -682,11 +747,12 @@ function review() {
   }
   phone.innerHTML = `${head(true)}
   <div class="body" style="padding-top:0"><h1 style="font-size:26px">Nhìn lại buổi luyện tập</h1><p class="sub">Với ${c.name} · ${P.turns.filter(t => t.role === "user").length} lượt nói của bạn</p>${content}</div>
-  <div class="foot"><button class="btn" id="again">Luyện lại với ${c.name}</button><p class="hint"><button class="link" id="other">Chọn thân chủ khác</button></p></div>`;
+  <div class="foot"><button class="btn" id="again">Luyện lại với ${esc(c.name)}</button><button class="btn light" id="newcase">Tạo thân chủ mới</button><p class="hint"><button class="link" id="other">Chọn thân chủ khác</button></p></div>`;
   bindBack(STEPS.indexOf("room"));
   const rt = document.getElementById("retry"); if (rt) rt.onclick = makeReview;
   document.getElementById("again").onclick = () => { P.turns = [{ role: "assistant", content: c.opening }]; P.review = null; P.reviewState = "idle"; go(STEPS.indexOf("room")); };
   document.getElementById("other").onclick = () => go(STEPS.indexOf("practice"));
+  document.getElementById("newcase").onclick = () => { G.open = true; G.msg = ""; go(STEPS.indexOf("practice")); };
 }
 
 try { const h = location.hash.slice(1); const i = STEPS.indexOf(h); if (i >= 0) S.step = i; } catch {}
