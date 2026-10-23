@@ -129,6 +129,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
 .send { width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--ink); color: #fff; cursor: pointer; display: grid; place-items: center; flex: none; }
 .send:disabled { opacity: .3; }
 .notice { margin: 0 18px; background: var(--warn-bg); color: var(--warn); border-radius: 14px; padding: 8px 12px; font-size: 12.5px; }
+.notice b { font-weight: 600; }
+.aibtn { display: block; margin-top: 8px; border: 0; border-radius: 999px; background: var(--ink); color: #fff; font: 600 13px var(--font-body); padding: 7px 14px; cursor: pointer; }
 
 /* Plan */
 .tabs2 { display: flex; background: var(--soft); border-radius: 999px; padding: 4px; }
@@ -216,15 +218,46 @@ const toMin = t => { const [h, m] = t.split(":").map(Number); return h * 60 + m;
 const eveningHours = () => (toMin(S.endStudy) - toMin(S.start)) / 60;
 
 /* ---------- AI ---------- */
-const samplePromise = (window.claude && claude.use) ? claude.use("sample").catch(() => null) : Promise.resolve(null);
-const BLOCK = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled"];
+const HAS_HOST = !!(window.claude && claude.use);
+const samplePromise = HAS_HOST ? claude.use("sample").catch(() => null) : Promise.resolve(null);
+const permsPromise = HAS_HOST ? claude.use("permissions").catch(() => null) : Promise.resolve(null);
+const BLOCK = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
+/* Trạng thái AI: checking | ready | prompt | denied | disabled | unavailable | nohost */
+const AI = { status: HAS_HOST ? "checking" : "nohost" };
+const AI_CODE = { not_granted: "denied", sampling_disabled: "disabled", not_declared: "unavailable", capability_disabled: "unavailable", capability_removed: "unavailable" };
+function aiReason() {
+  return {
+    nohost: "Đây là bản demo công khai, không kết nối AI. Mở link trên claude.ai để dùng AI thật.",
+    denied: "AI đang tắt vì bạn chưa cho phép ứng dụng dùng Claude. Tải lại trang, gửi tin nhắn và chọn Cho phép để bật AI.",
+    disabled: "AI đang tắt vì tài khoản hoặc tổ chức của bạn chưa bật tính năng cho ứng dụng dùng Claude.",
+    unavailable: "AI không khả dụng với tài khoản hoặc cách mở trang này. Thử mở link bằng tài khoản Claude khác, hoặc hỏi quản trị viên tổ chức của bạn.",
+    prompt: "Ứng dụng cần bạn cho phép dùng Claude. Lượt dùng tính vào tài khoản của bạn."
+  }[AI.status] || "";
+}
+async function aiInit() {
+  if (!HAS_HOST) return;
+  const sample = await samplePromise;
+  if (!sample) { AI.status = "unavailable"; S.aiOff = true; return aiRefresh(); }
+  let st = "prompt";
+  try { const p = await permsPromise; if (p) st = await p.state("sample"); } catch (e) {}
+  AI.status = st === "granted" ? "ready" : st === "denied" ? "denied" : st === "unavailable" ? "unavailable" : "prompt";
+  if (AI.status === "denied" || AI.status === "unavailable") S.aiOff = true;
+  aiRefresh();
+}
+async function enableAI() {
+  const p = await permsPromise; let st = "unavailable";
+  try { if (p) st = (await p.request(["sample"]))?.sample || "unavailable"; } catch (e) {}
+  if (st === "granted") { AI.status = "ready"; S.aiOff = false; setNotice("Đã bật AI. Bạn gửi lại tin nhắn để Claude trả lời nhé."); }
+  else { AI.status = st === "denied" ? "denied" : st === "prompt" ? "prompt" : "unavailable"; S.aiOff = AI.status !== "prompt"; setNotice(aiReason(), true); }
+}
+function aiRefresh() { const n = document.getElementById("noticeSlot"); if (n && n.dataset.ai === "1") setNotice(n.dataset.base || "", true); }
 const ERR = { not_granted: "Bạn chưa cho phép ứng dụng dùng Claude.", rate_limited: "Đang có nhiều yêu cầu, thử lại sau ít phút nhé.", refused: "Claude chưa trả lời được tin này, bạn thử nói cách khác nhé.", session_expired: "Phiên đăng nhập đã hết hạn." };
-const errText = e => e?.code === "off" ? "AI chưa khả dụng ở chế độ xem này. Bạn vẫn xem được lịch mẫu của nhóm." : (ERR[e?.code] || "Kết nối gián đoạn, thử lại nhé.");
+const errText = e => e?.code === "off" ? (aiReason() || "AI chưa khả dụng ở chế độ xem này.") + " Bạn vẫn xem được lịch mẫu của nhóm." : (ERR[e?.code] || "Kết nối gián đoạn, thử lại nhé.");
 async function ai(kind, input, opts = {}) {
   const sample = await samplePromise;
   if (!sample || S.aiOff) throw { code: "off" };
-  try { return kind === "json" ? await sample.json(input, { cache: false, ...opts }) : await sample(input, { cache: false, ...opts }); }
-  catch (e) { if (BLOCK.includes(e?.code)) S.aiOff = true; throw e; }
+  try { const r = kind === "json" ? await sample.json(input, { cache: false, ...opts }) : await sample(input, { cache: false, ...opts }); AI.status = "ready"; return r; }
+  catch (e) { if (BLOCK.includes(e?.code)) { S.aiOff = true; AI.status = AI_CODE[e.code]; throw { code: "off", reason: e.code }; } throw e; }
 }
 function rules() {
   return `Bạn là "${comp().name}", bạn đồng hành trong ứng dụng "Gỡ rối tơ lòng" dành cho sinh viên vừa học vừa làm. ${comp().tone}
@@ -256,7 +289,7 @@ const SCRIPT = [
   "Thứ tự mình đề xuất:\n- 1. Video, ôn và tiểu luận Giải phẫu sinh lý: hạn sớm nhất, tối thứ 5.\n- 2. Ôn, tiểu luận và bài kiểm tra Tâm lý học đại cương: bài kiểm tra đóng 23:00 thứ 6.\n- 3. Thuyết trình Trí tuệ nhân tạo: hạn 12:00 thứ 7 nhưng sáng thứ 7 bạn học, nên cần xong trước 8:00.\nBáo cáo tháng nên làm trong giờ làm, đừng mang về nhà vì buổi tối của bạn đã kín. Tuần này cần khoảng 18 giờ mà buổi tối chỉ có 13,5 giờ, nên hơi quá tải. Bạn bấm \"Lập lịch tuần\" để xem lịch chi tiết nhé.",
   "Cảm ơn bạn đã tin tưởng nói ra. Mình không thể và không nên chẩn đoán bạn có bị trầm cảm hay không. Nhưng mệt kéo dài mấy tháng, sáng dậy không muốn làm gì, là điều đáng được quan tâm nghiêm túc. Bạn nên gặp chuyên gia tâm lý hoặc bác sĩ để được đánh giá đúng. Nếu có lúc thấy không an toàn, hãy gọi 115 hoặc đến cơ sở y tế gần nhất. Hiện tại bạn có ai bên cạnh để chia sẻ không?"
 ];
-const SCRIPT_OTHER = "Bản demo này không kết nối AI nên mình chỉ trả lời được các tin nhắn gợi ý phía trên. Mở bản trên claude.ai để trò chuyện tự do nhé.";
+const scriptOther = () => HAS_HOST ? "AI đang tắt nên mình chỉ trả lời được các tin nhắn gợi ý phía trên. Xem lý do và cách bật AI ở khung bên dưới nhé." : "Bản demo này không kết nối AI nên mình chỉ trả lời được các tin nhắn gợi ý phía trên. Mở bản trên claude.ai để trò chuyện tự do nhé.";
 const DEMO_NOTE = "Bản demo: phản hồi mẫu viết sẵn theo tình huống của Vân, không phải AI trả lời trực tiếp.";
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const GROUP_PLAN = {
@@ -435,8 +468,8 @@ async function sendMsg(text, phase) {
     if (e?.code === "off") {
       const k = DEMO.findIndex(d => d.text === text);
       await wait(900);
-      S.turns.push({ role: "assistant", content: k >= 0 ? SCRIPT[k] : SCRIPT_OTHER, demo: true });
-      setNotice(DEMO_NOTE);
+      S.turns.push({ role: "assistant", content: k >= 0 ? SCRIPT[k] : scriptOther(), demo: true });
+      setNotice(DEMO_NOTE, true);
     } else {
       if (e?.text) S.turns.push({ role: "assistant", content: e.text });
       setNotice(errText(e));
@@ -446,7 +479,15 @@ async function sendMsg(text, phase) {
   if (STEPS[S.step] === "chat") { drawLog(); drawQuick(); const s = document.getElementById("send"); if (s) s.disabled = false; }
 }
 function chatRefreshHeader() { phone.querySelectorAll("[data-phase]").forEach((b, i) => { b.classList.toggle("done", i < S.phase); if (i === S.phase) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); }); }
-function setNotice(t) { const n = document.getElementById("noticeSlot"); if (n) n.innerHTML = t ? `<p class="notice">${esc(t)}</p>` : ""; }
+function setNotice(t, withAi = false) {
+  const n = document.getElementById("noticeSlot"); if (!n) return;
+  n.dataset.ai = withAi ? "1" : ""; n.dataset.base = t || "";
+  const why = withAi ? aiReason() : "";
+  const act = !withAi ? "" : AI.status === "prompt" ? '<button class="aibtn" id="aiOn">Bật AI</button>' : AI.status === "denied" ? '<button class="aibtn" id="aiReload">Tải lại trang</button>' : "";
+  n.innerHTML = t || why ? `<div class="notice">${t ? esc(t) : ""}${t && why ? "<br>" : ""}${why ? `<b>${esc(why)}</b>` : ""}${act}</div>` : "";
+  const on = document.getElementById("aiOn"); if (on) on.onclick = enableAI;
+  const rl = document.getElementById("aiReload"); if (rl) rl.onclick = () => location.reload();
+}
 
 /* ---------- plan ---------- */
 async function makePlan() {
@@ -487,7 +528,7 @@ function plan() {
   let content = "";
   if (S.planTab === "group") content = planView(GROUP_PLAN, "Lịch đối chiếu nhóm tự lập trước thực nghiệm (mục 2.3.2), đã tính tăng ca tối thứ 3.");
   else if (S.planState === "loading") content = `<div class="thinking"><span class="bob">${blob(c.color, c.lobes, c.amp, 72, c.mood)}</span><p>${c.name} đang cộng giờ và xếp lịch cho bạn...<br>Có thể mất khoảng nửa phút.</p></div>`;
-  else if (S.planState === "done" && S.plan) content = planView(S.plan, S.planDemo ? "Bản demo: kế hoạch mẫu viết sẵn, không phải AI lập trực tiếp. Mở bản trên claude.ai để Claude tự lập lịch." : `Lịch do Claude (${c.name}) đề xuất. Hãy đối chiếu với lịch của nhóm để tìm chỗ trùng hoặc thiếu giờ.`);
+  else if (S.planState === "done" && S.plan) content = planView(S.plan, S.planDemo ? "Bản demo: kế hoạch mẫu viết sẵn, không phải AI lập trực tiếp. " + aiReason() : `Lịch do Claude (${c.name}) đề xuất. Hãy đối chiếu với lịch của nhóm để tìm chỗ trùng hoặc thiếu giờ.`);
   else content = `<div class="thinking"><span>${blob(c.color, c.lobes, c.amp, 72, c.mood)}</span><p>${S.planMsg ? esc(S.planMsg) : `${c.name} sẽ đọc lại cuộc trò chuyện và xếp lịch tuần cho bạn.`}</p><button class="btn small" id="mk">Nhờ ${c.name} lập lịch</button></div>`;
   phone.innerHTML = `${head(true)}
   <div class="body" style="padding-top:0"><h1 style="font-size:26px">Kế hoạch tuần</h1>
@@ -694,7 +735,7 @@ async function sayRoom(text) {
       const n = P.turns.filter(t => t.role === "user").length - 1;
       const lines = pcase().demo;
       P.turns.push({ role: "assistant", content: lines[Math.min(n, lines.length - 1)] });
-      setNotice("Bản demo: câu trả lời của thân chủ là kịch bản viết sẵn, không phải AI nhập vai trực tiếp.");
+      setNotice("Bản demo: câu trả lời của thân chủ là kịch bản viết sẵn, không phải AI nhập vai trực tiếp.", true);
     } else { if (e?.text) P.turns.push({ role: "assistant", content: e.text }); setNotice(errText(e)); }
   }
   P.busy = false;
@@ -743,7 +784,7 @@ function review() {
       ${r.ky_nang?.length ? `<div class="day"><h2>Kỹ năng đã dùng</h2>${r.ky_nang.map(k => `<div class="blk hoc"><span class="tm">${esc(k.ten)}</span><span>"${esc(k.vi_du)}"</span></div>`).join("")}</div>` : ""}
       ${r.cau_thay_the?.length ? `<div class="day"><h2>Một cách nói khác</h2>${r.cau_thay_the.map(k => `<div class="blk"><span class="tm">Bạn nói</span><span>"${esc(k.goc)}"</span></div><div class="blk nghi"><span class="tm">Thử nói</span><span>"${esc(k.goi_y)}"</span></div>`).join("")}</div>` : ""}
       ${r.luu_y ? `<p class="warnbox">${esc(r.luu_y)}</p>` : ""}
-      <p class="hint">${P.reviewDemo ? "Bản demo: phản hồi mẫu viết sẵn, không phải AI đọc buổi của bạn. " : ""}Phản hồi chỉ để luyện tập, không đánh giá năng lực chuyên môn. Hãy trao đổi thêm với giảng viên hướng dẫn.</p>`;
+      <p class="hint">${P.reviewDemo ? "Bản demo: phản hồi mẫu viết sẵn, không phải AI đọc buổi của bạn. " + aiReason() + " " : ""}Phản hồi chỉ để luyện tập, không đánh giá năng lực chuyên môn. Hãy trao đổi thêm với giảng viên hướng dẫn.</p>`;
   }
   phone.innerHTML = `${head(true)}
   <div class="body" style="padding-top:0"><h1 style="font-size:26px">Nhìn lại buổi luyện tập</h1><p class="sub">Với ${c.name} · ${P.turns.filter(t => t.role === "user").length} lượt nói của bạn</p>${content}</div>
@@ -757,6 +798,7 @@ function review() {
 
 try { const h = location.hash.slice(1); const i = STEPS.indexOf(h); if (i >= 0) S.step = i; } catch {}
 render();
+aiInit();
 })();
 </script>
 </body>
